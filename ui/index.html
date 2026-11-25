@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Graphene Heater</title>
+<style>
+  :root {
+    --bg: #14161b;
+    --panel: #1c1f26;
+    --panel-2: #242833;
+    --line: #2e3340;
+    --text: #eef0f4;
+    --muted: #8c93a3;
+    --accent: #ff7a2e;
+    --accent-2: #ffb36b;
+    --accent-soft: rgba(255, 122, 46, .14);
+    --ok: #3ecf8e;
+    --bad: #ff5d5d;
+    --track: #2b303c;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f5f8; --panel: #ffffff; --panel-2: #eef0f4; --line: #e1e4ea;
+      --text: #1b1e25; --muted: #6b7282; --track: #e6e8ee;
+      --accent-soft: rgba(255, 122, 46, .12);
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%; background: var(--bg); color: var(--text);
+    font: 13px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    user-select: none; overflow: hidden;
+  }
+  body { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 0; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .4; }
+
+  /* title bar */
+  .bar { display: flex; align-items: center; gap: 8px; padding: 10px 10px 8px 16px; }
+  .bar .title { flex: 1; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.on { background: var(--ok); box-shadow: 0 0 0 3px rgba(62,207,142,.18); }
+  .dot.off { background: var(--bad); }
+  .icon-btn { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+  .icon-btn:hover { background: var(--panel-2); color: var(--text); }
+  .icon-btn svg { width: 16px; height: 16px; }
+
+  main { flex: 1; overflow-y: auto; padding: 0 14px 14px; display: flex; flex-direction: column; gap: 12px; }
+  main::-webkit-scrollbar { width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 10px; display: flex; justify-content: space-between; }
+
+  /* dial */
+  .hero { position: relative; padding: 8px 14px 14px; }
+  .dial { position: relative; width: 236px; height: 196px; margin: 0 auto; }
+  .dial > svg { width: 100%; height: 100%; overflow: visible; }
+  .dial .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 10px; }
+  .target { font-size: 56px; font-weight: 300; letter-spacing: -.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .target sup { font-size: 20px; color: var(--muted); vertical-align: top; position: relative; top: 8px; margin-left: 2px; }
+  .sub { color: var(--muted); margin-top: 6px; font-size: 12px; }
+  .room { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 3px 10px; background: var(--panel-2); border-radius: 99px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .adj { position: absolute; bottom: 18px; width: 40px; height: 40px; border-radius: 50%; background: var(--panel-2); font-size: 22px; display: grid; place-items: center; }
+  .adj:hover:not(:disabled) { background: var(--line); }
+  .adj.minus { left: 18px; } .adj.plus { right: 18px; }
+  .arc-fill { transition: stroke-dashoffset .35s ease, stroke .3s; }
+  .power-row { display: flex; justify-content: center; margin-top: 2px; }
+  .power { display: flex; align-items: center; gap: 8px; padding: 9px 22px; border-radius: 99px; background: var(--panel-2); font-weight: 600; transition: background .2s, color .2s; }
+  .power svg { width: 16px; height: 16px; }
+  .power.on { background: linear-gradient(135deg, var(--accent), #ff5a2e); color: #fff; box-shadow: 0 6px 20px -6px rgba(255,100,40,.6); }
+  .is-off .arc-fill { stroke: var(--muted) !important; }
+  .is-off .target { color: var(--muted); }
+
+  /* modes */
+  .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .seg button { padding: 10px 4px 8px; border-radius: 10px; background: var(--panel-2); display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); border: 1px solid transparent; }
+  .seg button svg { width: 18px; height: 18px; }
+  .seg button:hover:not(:disabled) { color: var(--text); }
+  .seg button.active { background: var(--accent-soft); color: var(--accent); border-color: rgba(255,122,46,.45); }
+  .hint { color: var(--muted); font-size: 11.5px; margin-top: 8px; min-height: 16px; }
+
+  /* toggles */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tog { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: var(--panel-2); text-align: left; border: 1px solid transparent; }
+  .tog .ic { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--bg); color: var(--muted); flex: none; }
+  .tog .ic svg { width: 16px; height: 16px; }
+  .tog .t { font-weight: 600; font-size: 12.5px; }
+  .tog .s { color: var(--muted); font-size: 11px; }
+  .tog.active { border-color: rgba(255,122,46,.45); background: var(--accent-soft); }
+  .tog.active .ic { background: var(--accent); color: #fff; }
+
+  /* timer */
+  .chips { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+  .chips button { padding: 7px 0; border-radius: 8px; background: var(--panel-2); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .chips button:hover:not(:disabled) { color: var(--text); }
+  .chips button.active { background: var(--accent); color: #fff; }
+
+  .banner { padding: 10px 12px; border-radius: 10px; font-size: 12px; display: none; gap: 8px; align-items: flex-start; }
+  .banner.show { display: flex; }
+  .banner.err { background: rgba(255,93,93,.12); color: var(--bad); }
+  .banner.warn { background: rgba(255,179,107,.14); color: var(--accent-2); }
+  .meta { color: var(--muted); font-size: 11px; text-align: center; padding: 2px 0 0; }
+
+  /* settings */
+  .view { display: none; flex: 1; flex-direction: column; min-height: 0; }
+  .view.show { display: flex; }
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .field label { font-size: 12px; color: var(--muted); }
+  .field input[type=text], .field input[type=password] { padding: 9px 11px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); font: 13px "Cascadia Mono", Consolas, monospace; outline: none; }
+  .field input:focus { border-color: var(--accent); }
+  .check { display: flex; align-items: center; gap: 10px; cursor: pointer; margin: 4px 0 14px; }
+  .check input { width: 16px; height: 16px; accent-color: var(--accent); }
+  .primary { width: 100%; padding: 10px; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 600; }
+  .primary:hover { filter: brightness(1.06); }
+  .help { color: var(--muted); font-size: 12px; line-height: 1.55; }
+  .help ol { padding-left: 18px; margin-top: 6px; }
+  .help code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 11.5px; background: var(--panel-2); padding: 1px 4px; border-radius: 4px; }
+  .quit { color: var(--bad); font-size: 12px; margin-top: 10px; width: 100%; padding: 8px; border-radius: 9px; }
+  .quit:hover { background: rgba(255,93,93,.1); }
+  .busy { opacity: .55; pointer-events: none; }
+</style>
+</head>
+<body>
+  <div class="bar pywebview-drag-region">
+    <div class="title pywebview-drag-region"><span id="dot" class="dot"></span><span id="title">Graphene Heater</span></div>
+    <button class="icon-btn" id="btnSettings" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+    <button class="icon-btn" id="btnHide" title="Hide to tray">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+
+  <!-- ============ CONTROL VIEW ============ -->
+  <div class="view show" id="viewMain">
+    <main id="main">
+      <div class="banner err" id="errBanner"><span id="errText"></span></div>
+      <div class="banner warn" id="faultBanner"><span id="faultText"></span></div>
+
+      <div class="card hero" id="hero">
+        <div class="dial">
+          <svg viewBox="0 0 236 200">
+            <defs>
+              <linearGradient id="g" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0" stop-color="#ffb36b"/><stop offset="1" stop-color="#ff5a2e"/>
+              </linearGradient>
+            </defs>
+            <path id="arcTrack" fill="none" stroke="var(--track)" stroke-width="12" stroke-linecap="round"/>
+            <path id="arcFill" class="arc-fill" fill="none" stroke="url(#g)" stroke-width="12" stroke-linecap="round"/>
+            <circle id="roomMark" r="5" fill="var(--text)" stroke="var(--panel)" stroke-width="3" style="display:none"/>
+          </svg>
+          <div class="center">
+            <div class="target"><span id="target">--</span><sup>°C</sup></div>
+            <div class="sub" id="targetSub">Target</div>
+            <div class="room" title="Room temperature">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+              <span id="room">--</span>
+            </div>
+          </div>
+          <button class="adj minus" id="btnMinus" title="Lower target">&minus;</button>
+          <button class="adj plus" id="btnPlus" title="Raise target">+</button>
+        </div>
+        <div class="power-row">
+          <button class="power" id="btnPower">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>
+            <span id="powerText">Power</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="card" id="modeCard">
+        <div class="label"><span>Mode</span></div>
+        <div class="seg" id="modes"></div>
+        <div class="hint" id="modeHint"></div>
+      </div>
+
+      <div class="card" id="optCard">
+        <div class="label"><span>Options</span></div>
+        <div class="grid" id="toggles"></div>
+      </div>
+
+      <div class="card" id="timerCard">
+        <div class="label"><span>Auto shut-off</span><span id="timerRemain"></span></div>
+        <div class="chips" id="chips"></div>
+      </div>
+
+      <div class="meta" id="meta"></div>
+    </main>
+  </div>
+
+  <!-- ============ SETTINGS VIEW ============ -->
+  <div class="view" id="viewSettings">
+    <main>
+      <div class="card">
+        <div class="label"><span>Connection</span></div>
+        <div class="field"><label for="ip">Heater IP address</label><input type="text" id="ip" spellcheck="false" placeholder="e.g. 192.168.1.50"></div>
+        <div class="field"><label for="token">Device token (32 hex characters)</label><input type="password" id="token" spellcheck="false" placeholder="e.g. 3f2b9c...">
+        </div>
+        <label class="check"><input type="checkbox" id="autostart"> Start with Windows (in the tray)</label>
+        <button class="primary" id="btnSave">Save &amp; connect</button>
+        <div class="banner err" id="setErr" style="margin-top:10px"><span id="setErrText"></span></div>
+      </div>
+      <div class="card help">
+        <div class="label"><span>Getting the token</span></div>
+        Xiaomi heaters only accept local commands signed with a per-device token, which is stored in your Xiaomi account.
+        <ol>
+          <li>Download <code>token_extractor.exe</code> from github.com/PiotrMachowski/Xiaomi-cloud-tokens-extractor (Releases).</li>
+          <li>Run it and log in with your Xiaomi Home account (same region as in the app).</li>
+          <li>Find your heater in the list (model <code>xiaomi.heater.ma8</code>) and copy its <b>IP</b> and <b>TOKEN</b> here.</li>
+        </ol>
+      </div>
+      <button class="quit" id="btnQuit">Quit Graphene Heater</button>
+    </main>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+const api = () => window.pywebview.api;
+
+const ICONS = {
+  auto: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>',
+  high: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5.5 2 1.5 3 3 3-1-3 0-6 0-9.5z"/></svg>',
+  low: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 4c-1.5 2 1.5 3 0 5M12 4c-1.5 2 1.5 3 0 5M16 4c-1.5 2 1.5 3 0 5"/><rect x="4" y="12" width="16" height="8" rx="2"/></svg>',
+  fan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 8h11a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h7"/></svg>',
+  swing: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 16 0"/><path d="M17 9l3 3 3-3M7 9l-3 3-3-3"/><circle cx="12" cy="16" r="2"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+  beep: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
+  light: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V16h8v-1.3A7 7 0 0 0 12 2z"/></svg>',
+};
+
+// Map spec mode labels to friendly names (value numbers differ between firmware variants)
+const MODE_INFO = [
+  { match: /constant|thermo|auto/i, key: 'auto', name: 'Thermostat', hint: 'Heats until the room reaches the target temperature, then holds it.' },
+  { match: /^heat|high|strong/i, key: 'high', name: 'High', hint: 'Full heating power (about 2000 W).' },
+  { match: /warm|low|eco/i, key: 'low', name: 'Low', hint: 'Reduced heating power for gentle warmth.' },
+  { match: /wind|fan|natural/i, key: 'fan', name: 'Fan', hint: 'Fan only, no heating.' },
+];
+
+const TOGGLES = [
+  { f: 'swing', name: 'Oscillation', icon: 'swing', on: 'Swinging', off: 'Fixed' },
+  { f: 'child_lock', name: 'Child lock', icon: 'lock', on: 'Buttons locked', off: 'Unlocked' },
+  { f: 'beep', name: 'Beep', icon: 'beep', on: 'Sounds on', off: 'Muted' },
+  { f: 'light', name: 'Display', icon: 'light', on: 'Lit', off: 'Off' },
+];
+
+let schema = null, state = {}, online = false;
+const pending = {};          // feature -> expiry ms; ignore polled values while a change is in flight
+let tempTimer = null;
+
+// ---------- dial geometry ----------
+const CX = 118, CY = 112, R = 92, SWEEP = 270;
+function pt(deg) { const a = (deg - 90) * Math.PI / 180; return [CX + R * Math.cos(a), CY + R * Math.sin(a)]; }
+function arc(a0, a1) {
+  const [x0, y0] = pt(a0), [x1, y1] = pt(a1);
+  return `M${x0} ${y0} A${R} ${R} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1} ${y1}`;
+}
+// angles measured clockwise from 12 o'clock; the track runs from -135° to +135°
+const A0 = -135, A1 = 135;
+$('arcTrack').setAttribute('d', arc(A0, A1));
+const arcLen = R * Math.PI * SWEEP / 180;
+$('arcFill').setAttribute('d', arc(A0, A1));
+$('arcFill').style.strokeDasharray = arcLen;
+
+function range(f) { return (schema && schema[f] && schema[f].range) || [22, 28, 1]; }
+
+// ---------- rendering ----------
+function setFeature(f, v) { state[f] = v; pending[f] = Date.now() + 8000; }
+
+function render() {
+  const has = f => schema && f in schema;
+  const on = !!state.power;
+  document.body.classList.toggle('is-off', !on);
+  $('dot').className = 'dot ' + (online ? 'on' : 'off');
+
+  // dial
+  const [lo, hi, step] = range('target_temp');
+  const tgt = state.target_temp;
+  $('target').textContent = tgt ?? '--';
+  const frac = tgt == null ? 0 : Math.min(1, Math.max(0, (tgt - lo) / (hi - lo)));
+  $('arcFill').style.strokeDashoffset = arcLen * (1 - Math.max(frac, 0.02));
+  const room = state.temperature;
+  $('room').textContent = room == null ? '--' : `Room ${room.toFixed(1)}°C`;
+  if (room != null) {
+    const rf = Math.min(1, Math.max(0, (room - lo) / (hi - lo)));
+    const [mx, my] = pt(A0 + rf * (A1 - A0));
+    $('roomMark').setAttribute('cx', mx); $('roomMark').setAttribute('cy', my);
+    $('roomMark').style.display = '';
+  }
+  const modeName = currentModeInfo()?.key;
+  const thermostat = modeName === 'auto' || !has('mode');
+  $('targetSub').textContent = !on ? 'Off' : thermostat ? 'Target' : 'Target (Thermostat mode only)';
+  $('btnMinus').disabled = !online || tgt == null || tgt <= lo;
+  $('btnPlus').disabled = !online || tgt == null || tgt >= hi;
+  $('btnPower').classList.toggle('on', on);
+  $('btnPower').disabled = !online;
+  $('powerText').textContent = on ? 'On' : 'Off';
+
+  // modes
+  document.querySelectorAll('#modes button').forEach(b => {
+    b.classList.toggle('active', Number(b.dataset.v) === state.mode);
+    b.disabled = !online;
+  });
+  $('modeHint').textContent = currentModeInfo()?.hint || '';
+
+  // toggles
+  document.querySelectorAll('#toggles .tog').forEach(b => {
+    const v = !!state[b.dataset.f], t = TOGGLES.find(x => x.f === b.dataset.f);
+    b.classList.toggle('active', v);
+    b.querySelector('.s').textContent = v ? t.on : t.off;
+    b.disabled = !online;
+  });
+
+  // timer
+  const timerOn = !!state.timer;
+  document.querySelectorAll('#chips button').forEach(b => {
+    const h = Number(b.dataset.h);
+    b.classList.toggle('active', h === 0 ? !timerOn : timerOn && state.timer_hours === h);
+    b.disabled = !online;
+  });
+  const rem = state.timer_remaining;
+  $('timerRemain').textContent = timerOn ? (rem != null ? `${rem} h left` : 'On') : '';
+
+  // fault
+  if (has('fault') && state.fault) {
+    const v = schema.fault.values.find(x => x.value === state.fault);
+    $('faultText').textContent = `Heater reports a fault: ${v ? v.label : state.fault}`;
+    $('faultBanner').classList.add('show');
+  } else $('faultBanner').classList.remove('show');
+}
+
+function currentModeInfo() {
+  if (!schema || !schema.mode) return null;
+  const v = schema.mode.values.find(x => x.value === state.mode);
+  return v ? MODE_INFO.find(m => m.match.test(v.label)) : null;
+}
+
+function buildControls() {
+  // modes
+  const modes = $('modes'); modes.innerHTML = '';
+  if (schema.mode) {
+    const items = schema.mode.values.map(v => {
+      const info = MODE_INFO.find(m => m.match.test(v.label)) || { key: 'auto', name: v.label };
+      return { v: v.value, info, order: MODE_INFO.indexOf(info) };
+    }).sort((a, b) => a.order - b.order);
+    modes.style.gridTemplateColumns = `repeat(${items.length}, 1fr)`;
+    for (const it of items) {
+      const b = document.createElement('button');
+      b.dataset.v = it.v; b.title = schema.mode.values.find(x => x.value === it.v).label;
+      b.innerHTML = ICONS[it.info.key] + `<span>${it.info.name}</span>`;
+      b.onclick = () => change('mode', it.v);
+      modes.appendChild(b);
+    }
+  }
+  $('modeCard').style.display = schema.mode ? '' : 'none';
+
+  // toggles
+  const tg = $('toggles'); tg.innerHTML = '';
+  for (const t of TOGGLES.filter(t => schema[t.f] && schema[t.f].writable)) {
+    const b = document.createElement('button');
+    b.className = 'tog'; b.dataset.f = t.f;
+    b.innerHTML = `<span class="ic">${ICONS[t.icon]}</span><span><div class="t">${t.name}</div><div class="s"></div></span>`;
+    b.onclick = () => change(t.f, !state[t.f]);
+    tg.appendChild(b);
+  }
+  $('optCard').style.display = tg.children.length ? '' : 'none';
+
+  // timer
+  const chips = $('chips'); chips.innerHTML = '';
+  if (schema.timer && schema.timer_hours) {
+    const [lo, hi] = schema.timer_hours.range || [1, 8];
+    chips.style.gridTemplateColumns = `repeat(${hi - lo + 2}, 1fr)`;
+    const mk = (h, label) => {
+      const b = document.createElement('button');
+      b.dataset.h = h; b.textContent = label;
+      b.onclick = () => setTimer(h);
+      chips.appendChild(b);
+    };
+    mk(0, 'Off');
+    for (let h = lo; h <= hi; h++) mk(h, h + 'h');
+  }
+  $('timerCard').style.display = chips.children.length ? '' : 'none';
+}
+
+function applyStatus(s) {
+  online = s.online;
+  if (s.schema && !schema) { schema = s.schema; buildControls(); }
+  if (s.schema) schema = s.schema;
+  const now = Date.now();
+  for (const [k, v] of Object.entries(s.state || {})) {
+    if (pending[k] && pending[k] > now) continue;
+    delete pending[k];
+    state[k] = v;
+  }
+  if (s.info) {
+    const i = s.info;
+    $('meta').textContent = [i.model, i.firmware && 'fw ' + i.firmware, i.wifi_rssi != null && `Wi-Fi ${i.wifi_rssi} dBm`].filter(Boolean).join(' · ');
+  }
+  if (s.error) { $('errText').textContent = s.error; $('errBanner').classList.add('show'); }
+  else $('errBanner').classList.remove('show');
+  $('hero').classList.toggle('busy', !schema);
+  render();
+}
+
+// ---------- actions ----------
+async function change(f, v) {
+  setFeature(f, v); render();
+  const s = await api().set(f, v);
+  delete pending[f];
+  applyStatus(s);
+}
+
+async function setTimer(h) {
+  if (h === 0) return change('timer', false);
+  setFeature('timer_hours', h); setFeature('timer', true); render();
+  await api().set('timer_hours', h);
+  const s = await api().set('timer', true);
+  delete pending.timer_hours; delete pending.timer;
+  applyStatus(s);
+}
+
+function nudgeTemp(d) {
+  const [lo, hi, step] = range('target_temp');
+  const v = Math.min(hi, Math.max(lo, (state.target_temp ?? lo) + d * (step || 1)));
+  setFeature('target_temp', v); render();
+  clearTimeout(tempTimer);
+  tempTimer = setTimeout(() => change('target_temp', v), 600);   // debounce rapid clicks
+}
+
+$('btnMinus').onclick = () => nudgeTemp(-1);
+$('btnPlus').onclick = () => nudgeTemp(1);
+$('btnPower').onclick = () => change('power', !state.power);
+$('btnHide').onclick = () => api().hide();
+$('btnQuit').onclick = () => api().quit();
+
+// ---------- settings ----------
+let settingsOpen = false;
+async function openSettings(open) {
+  settingsOpen = open;
+  $('viewMain').classList.toggle('show', !open);
+  $('viewSettings').classList.toggle('show', open);
+  $('title').textContent = open ? 'Settings' : 'Graphene Heater';
+  if (open) {
+    const c = await api().get_settings();
+    $('ip').value = c.ip; $('token').value = c.token; $('autostart').checked = c.autostart;
+    $('setErr').classList.remove('show');
+  }
+}
+$('btnSettings').onclick = () => openSettings(!settingsOpen);
+$('btnSave').onclick = async () => {
+  $('btnSave').textContent = 'Connecting…'; $('btnSave').classList.add('busy');
+  const s = await api().save_settings($('ip').value, $('token').value, $('autostart').checked);
+  $('btnSave').textContent = 'Save & connect'; $('btnSave').classList.remove('busy');
+  if (s.online) { schema = null; applyStatus(s); openSettings(false); }
+  else { $('setErrText').textContent = s.error || 'Could not connect'; $('setErr').classList.add('show'); }
+};
+
+// ---------- polling ----------
+async function poll() {
+  try { applyStatus(await api().get_status()); } catch (e) {}
+}
+window.onShown = poll;
+
+window.addEventListener('pywebviewready', async () => {
+  await poll();
+  const c = await api().get_settings();
+  if (!c.token) openSettings(true);
+  setInterval(() => { if (!document.hidden) poll(); }, 2500);
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') api().hide(); });
+</script>
+</body>
+</html>
